@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Star Miner</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; background:#0a0e1a; overflow:hidden; font-family:'Segoe UI',system-ui,sans-serif; color:#e8ecf8; }
+  #wrap { position:relative; width:100%; height:100%; max-width:520px; margin:0 auto; }
+  canvas { display:block; width:100%; height:100%; }
+  .screen { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+            background:rgba(8,12,26,.9); backdrop-filter:blur(6px); text-align:center; padding:24px; z-index:10; overflow-y:auto; }
+  .hidden { display:none !important; }
+  h1 { font-size:30px; letter-spacing:2px; margin-bottom:6px;
+       background:linear-gradient(90deg,#ffd76e,#ff9d5c); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  h2 { font-size:21px; margin-bottom:10px; }
+  p.sub { color:#8b93b0; font-size:13px; margin-bottom:16px; line-height:1.5; }
+  .btn { background:linear-gradient(135deg,#ffd76e,#ff9d5c); color:#1a1206; border:none; border-radius:14px;
+         padding:13px 30px; font-size:16px; font-weight:700; cursor:pointer; margin:5px;
+         box-shadow:0 6px 24px rgba(255,180,90,.35); transition:transform .12s; }
+  .btn:active { transform:scale(.95); }
+  .btn.ghost { background:transparent; border:1px solid #3a4468; color:#aab3d0; box-shadow:none; }
+  .btn.small { padding:10px 16px; font-size:14px; }
+  .stats { display:flex; gap:10px; margin:12px 0 14px; flex-wrap:wrap; justify-content:center; }
+  .stat { background:#131a30; border:1px solid #263154; border-radius:12px; padding:8px 14px; min-width:78px; }
+  .stat b { display:block; font-size:18px; color:#ffd76e; }
+  .stat span { font-size:10px; color:#8b93b0; text-transform:uppercase; letter-spacing:1px; }
+  .viral { width:100%; max-width:380px; background:linear-gradient(135deg,#16213f,#131a30); border:1px solid #2c3a66;
+           border-radius:14px; padding:14px 16px; margin-bottom:14px; text-align:left; }
+  .viral b { font-size:14px; color:#7fd8ff; }
+  .viral p { font-size:12px; color:#8b93b0; margin:4px 0 8px; }
+  .row { display:flex; gap:8px; }
+  .row .btn { flex:1; margin:0; }
+  #shop .items, #lb .items { width:100%; max-width:380px; display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+  .item { display:flex; justify-content:space-between; align-items:center; background:#131a30;
+          border:1px solid #263154; border-radius:12px; padding:11px 14px; }
+  .item .info { text-align:left; }
+  .item .info b { font-size:13px; }
+  .item .info span { display:block; font-size:11px; color:#8b93b0; margin-top:2px; }
+  .item .rank { color:#ffd76e; font-weight:700; width:28px; text-align:left; }
+  .buy { background:#1d2a4d; color:#ffd76e; border:1px solid #3a4468; border-radius:10px;
+         padding:8px 12px; font-weight:700; cursor:pointer; white-space:nowrap; font-size:13px; }
+  .buy:disabled { opacity:.35; cursor:default; }
+  .buy:not(:disabled):active { transform:scale(.94); }
+  .toast { position:absolute; top:14px; left:50%; transform:translateX(-50%); background:#1d2a4d; border:1px solid #3a4468;
+           color:#ffd76e; padding:10px 18px; border-radius:12px; font-size:13px; z-index:50; transition:opacity .4s; }
+  .hint { position:absolute; bottom:12px; left:0; right:0; text-align:center; font-size:11px; color:#5a6382; z-index:5; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="menu" class="screen">
+    <h1>STAR MINER</h1>
+    <p class="sub">Собирай монеты, уворачивайся от астероидов.<br>Прокачивайся, зови друзей, держи стрик.</p>
+    <div class="stats">
+      <div class="stat"><b id="mCoins">0</b><span>монет</span></div>
+      <div class="stat"><b id="mBest">0</b><span>рекорд</span></div>
+      <div class="stat"><b id="mStreak">0</b><span>стрик 🔥</span></div>
+    </div>
+    <div class="viral">
+      <b>🎁 +200 🪙 тебе и другу</b>
+      <p>Отправь свою ссылку другу — когда он зайдёт в игру, вы оба получите бонус.</p>
+      <div class="row"><button class="btn small" id="inviteBtn">Пригласить друга</button></div>
+    </div>
+    <div class="viral">
+      <b>📋 Ежедневное задание <span id="taskState"></span></b>
+      <p>Подпишись на канал — получи 150 🪙. Обновляется каждый день.</p>
+      <div class="row">
+        <button class="btn small ghost" id="taskGoBtn">Подписаться</button>
+        <button class="btn small" id="taskCheckBtn">Проверить</button>
+      </div>
+    </div>
+    <button class="btn" id="playBtn">Играть</button>
+    <button class="btn ghost" id="shopBtn">Бустеры</button>
+    <button class="btn ghost" id="lbBtn">Рейтинг</button>
+  </div>
+
+  <div id="shop" class="screen hidden">
+    <h2>Бустеры</h2>
+    <p class="sub" style="margin-bottom:12px">Баланс: <b id="sCoins" style="color:#ffd76e">0</b> 🪙</p>
+    <div class="items" id="items"></div>
+    <button class="btn ghost" id="backBtn">Назад</button>
+  </div>
+
+  <div id="lb" class="screen hidden">
+    <h2>Топ игроков</h2>
+    <div class="items" id="lbItems"></div>
+    <button class="btn ghost" id="lbBackBtn">Назад</button>
+  </div>
+
+  <div id="over" class="screen hidden">
+    <h2>Игра окончена</h2>
+    <div id="newRecord" class="hidden" style="color:#7fd8ff;font-weight:700;margin-bottom:8px">🏆 Новый рекорд!</div>
+    <div class="stats">
+      <div class="stat"><b id="oScore">0</b><span>очки</span></div>
+      <div class="stat"><b id="oCoins">0</b><span>монеты</span></div>
+      <div class="stat"><b id="oBest">0</b><span>рекорд</span></div>
+    </div>
+    <div>
+      <button class="btn" id="againBtn">Ещё раз</button>
+      <button class="btn ghost" id="overMenuBtn">В меню</button>
+    </div>
+  </div>
+
+  <div class="hint">← → или мышь/палец — движение</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const cv = $('game'), cx = cv.getContext('2d');
+let W, H;
+function resize(){ W = cv.width = cv.clientWidth * devicePixelRatio; H = cv.height = cv.clientHeight * devicePixelRatio; }
+addEventListener('resize', resize); resize();
+
+// ---------- Telegram / идентификация ----------
+const tg = window.Telegram && Telegram.WebApp ? Telegram.WebApp : null;
+if (tg) { tg.ready(); tg.expand(); }
+const params = new URLSearchParams(location.search);
+const uid = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id)
+            || params.get('uid') || 'demo';
+const ref = params.get('ref') || null;
+const api = {
+  async get(path){ const r = await fetch(path); return r.json(); },
+  async post(path, body){
+    const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ uid, initData: tg ? tg.initData : '', ...body }) });
+    return r.json();
+  }
+};
+
+// ---------- Состояние ----------
+let sv = { coins:0, up:{}, best:0, streak:0, taskDone:false, lb:[] }; // серверное
+let local = JSON.parse(localStorage.getItem('sm_v2') || '{"up":{}}');
+let refSent = localStorage.getItem('sm_ref') === '1';
+
+const UPGRADES = {
+  speed:  { name:'Двигатель', desc:'+скорость корабля',     base:15,  max:5 },
+  magnet: { name:'Магнит',    desc:'монеты притягиваются',  base:25,  max:5 },
+  lives:  { name:'Броня',     desc:'+1 жизнь за заход',     base:50,  max:3 },
+  mult:   { name:'Множитель', desc:'+25% к монетам',        base:100, max:4 },
+};
+const up = k => (sv.up && sv.up[k]) || local.up[k] || 0;
+function cost(k){ return Math.round(UPGRADES[k].base * Math.pow(1.8, up(k))); }
+
+async function loadState(){
+  try {
+    const s = await api.get('/api/state?uid=' + uid);
+    sv = s;
+    if (ref && !refSent && ref !== String(uid)) {
+      refSent = true; localStorage.setItem('sm_ref','1');
+    }
+    renderMenu();
+  } catch(e) { /* офлайн-режим: считаем из localStorage ниже */ }
+}
+
+// ---------- Игра ----------
+let state='menu', player, coins, rocks, parts, score, runCoins, lives, wave, t, keys={}, px=null;
+
+function startRun(){
+  player = { x:W/2, y:H-90*devicePixelRatio, r:14*devicePixelRatio };
+  coins=[]; rocks=[]; parts=[]; score=0; runCoins=0; t=0; wave=1; px=null;
+  lives = 1 + up('lives');
+  state='play'; show(null);
+}
+
+addEventListener('keydown', e => { keys[e.key]=true; if([' ','ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault(); });
+addEventListener('keyup', e => keys[e.key]=false);
+cv.addEventListener('pointermove', e => { const r=cv.getBoundingClientRect(); px=(e.clientX-r.left)*devicePixelRatio; });
+cv.addEventListener('touchmove', e => e.preventDefault(), { passive:false });
+
+function spawnCoin(){ coins.push({ x:20+Math.random()*(W-40), y:-20, r:9*devicePixelRatio, vy:(1.2+wave*.15)*devicePixelRatio, wob:Math.random()*6 }); }
+function spawnRock(){ rocks.push({ x:20+Math.random()*(W-40), y:-30, r:(12+Math.random()*14)*devicePixelRatio, vy:(1.6+wave*.22+Math.random())*devicePixelRatio, rot:Math.random()*6, vr:(Math.random()-.5)*.08 }); }
+function burst(x,y,color,n){ for(let i=0;i<n;i++) parts.push({x,y,vx:(Math.random()-.5)*5*devicePixelRatio,vy:(Math.random()-.5)*5*devicePixelRatio,life:1,color}); }
+
+let last=0, spawnC=0, spawnR=0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  const dt=Math.min((ts-last)/16.6,3); last=ts;
+  cx.fillStyle='#0a0e1a'; cx.fillRect(0,0,W,H);
+  drawStars();
+  if(state==='play') update(dt);
+  draw();
+  if(state==='play') hud();
+}
+const bgStars=Array.from({length:70},()=>({x:Math.random(),y:Math.random(),s:Math.random()*1.6+.4,v:Math.random()*.4+.1}));
+function drawStars(){ bgStars.forEach(s=>{ s.y+=s.v*.0015; if(s.y>1)s.y=0;
+  cx.fillStyle='rgba(200,214,255,.6)'; cx.fillRect(s.x*W,s.y*H,s.s*devicePixelRatio,s.s*devicePixelRatio); }); }
+
+function update(dt){
+  t+=dt; wave=1+Math.floor(t/600);
+  const sp=(4.2+up('speed')*.9)*devicePixelRatio;
+  if(keys['ArrowLeft']||keys['a']) player.x-=sp*dt;
+  if(keys['ArrowRight']||keys['d']) player.x+=sp*dt;
+  if(px!==null) player.x+=Math.max(-sp*1.4*dt,Math.min(sp*1.4*dt,px-player.x));
+  player.x=Math.max(player.r,Math.min(W-player.r,player.x));
+
+  spawnC-=dt; if(spawnC<=0){ spawnCoin(); spawnC=Math.max(18,42-wave*2); }
+  spawnR-=dt; if(spawnR<=0){ spawnRock(); spawnR=Math.max(26,60-wave*3); }
+  const magnetR=(60+up('magnet')*40)*devicePixelRatio;
+
+  for(let i=coins.length-1;i>=0;i--){
+    const c=coins[i]; c.y+=c.vy*dt; c.wob+=.08*dt;
+    const d=Math.hypot(c.x-player.x,c.y-player.y);
+    if(d<magnetR){ c.x+=(player.x-c.x)*.12*dt; c.y+=(player.y-c.y)*.12*dt; }
+    if(d<player.r+c.r){
+      const val=Math.round((1+0.25*up('mult'))*(wave>=3?2:1));
+      runCoins+=val; score+=10*val; burst(c.x,c.y,'#ffd76e',8); coins.splice(i,1); continue;
+    }
+    if(c.y>H+30) coins.splice(i,1);
+  }
+  for(let i=rocks.length-1;i>=0;i--){
+    const r=rocks[i]; r.y+=r.vy*dt; r.rot+=r.vr*dt;
+    if(Math.hypot(r.x-player.x,r.y-player.y)<r.r+player.r*.8){
+      burst(player.x,player.y,'#ff6a5c',20); rocks.splice(i,1); lives--;
+      if(lives<=0){ endRun(); return; }
+    } else if(r.y>H+40) rocks.splice(i,1);
+  }
+  for(let i=parts.length-1;i>=0;i--){ const p=parts[i]; p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=.04*dt; if(p.life<=0)parts.splice(i,1); }
+  score+=dt*.1;
+}
+
+function draw(){
+  coins.forEach(c=>{ cx.save(); cx.translate(c.x+Math.sin(c.wob)*4,c.y);
+    cx.fillStyle='#ffd76e'; cx.beginPath(); cx.arc(0,0,c.r,0,7); cx.fill();
+    cx.fillStyle='#c98f2a'; cx.beginPath(); cx.arc(0,0,c.r*.55,0,7); cx.fill(); cx.restore(); });
+  rocks.forEach(r=>{ cx.save(); cx.translate(r.x,r.y); cx.rotate(r.rot);
+    cx.fillStyle='#6b7194'; cx.beginPath();
+    for(let i=0;i<8;i++){ const a=i/8*Math.PI*2, rad=r.r*(.85+((i*37)%13)/13*.3); cx[i?'lineTo':'moveTo'](Math.cos(a)*rad,Math.sin(a)*rad); }
+    cx.closePath(); cx.fill(); cx.fillStyle='#4c5270'; cx.beginPath(); cx.arc(r.r*.25,-r.r*.15,r.r*.22,0,7); cx.fill(); cx.restore(); });
+  parts.forEach(p=>{ cx.globalAlpha=p.life; cx.fillStyle=p.color; cx.fillRect(p.x,p.y,4*devicePixelRatio,4*devicePixelRatio); });
+  cx.globalAlpha=1;
+  if(state==='play'){
+    cx.save(); cx.translate(player.x,player.y);
+    cx.fillStyle='#7fd8ff'; cx.beginPath(); cx.moveTo(0,-player.r*1.5); cx.lineTo(player.r,player.r); cx.lineTo(0,player.r*.55); cx.lineTo(-player.r,player.r); cx.closePath(); cx.fill();
+    cx.fillStyle='#ffb45c'; cx.beginPath(); cx.moveTo(-player.r*.3,player.r); cx.lineTo(0,player.r*1.7+Math.random()*5); cx.lineTo(player.r*.3,player.r); cx.closePath(); cx.fill();
+    cx.restore();
+  }
+}
+function hud(){
+  cx.fillStyle='#e8ecf8'; cx.font=`${15*devicePixelRatio}px system-ui`; cx.textAlign='left';
+  cx.fillText(`Очки: ${Math.floor(score)}`,14*devicePixelRatio,26*devicePixelRatio);
+  cx.fillText(`🪙 ${runCoins}`,14*devicePixelRatio,48*devicePixelRatio);
+  cx.textAlign='right';
+  cx.fillText(`❤️ ${lives}`,W-14*devicePixelRatio,26*devicePixelRatio);
+  cx.fillText(`Волна ${wave}`,W-14*devicePixelRatio,48*devicePixelRatio);
+}
+
+// ---------- Конец забега: синхронизация с сервером ----------
+let newRecord = false;
+async function endRun(){
+  state='over';
+  newRecord = Math.floor(score) > (sv.best||0);
+  try {
+    const r = await api.post('/api/score', { score: Math.floor(score) });
+    if(r.ok) sv = r.state;
+  } catch(e){}
+  try {
+    const r = await api.post('/api/save', { coins: runCoins, up: local.up, best: Math.floor(score), ref: (ref && !refSent) ? ref : null });
+    if(r.ok){
+      sv = r.state; refSent = true; localStorage.setItem('sm_ref','1');
+      if(r.bonus) toast(r.bonus);
+    }
+  } catch(e){ sv.coins = (sv.coins||0) + runCoins; }
+  renderMenu();
+  $('oScore').textContent = Math.floor(score);
+  $('oCoins').textContent = runCoins;
+  $('oBest').textContent = sv.best || Math.floor(score);
+  $('newRecord').classList.toggle('hidden', !newRecord);
+  show('over');
+}
+
+// ---------- Экраны ----------
+function renderMenu(){
+  $('mCoins').textContent = sv.coins || 0;
+  $('mBest').textContent = sv.best || 0;
+  $('mStreak').textContent = sv.streak || 0;
+  $('taskState').textContent = sv.taskDone ? '✅ сегодня выполнено' : '';
+}
+function show(id){
+  ['menu','shop','lb','over'].forEach(s=>$(s).classList.add('hidden'));
+  if(id) $(id).classList.remove('hidden');
+  renderMenu();
+}
+function renderShop(){
+  $('sCoins').textContent = sv.coins || 0;
+  $('items').innerHTML='';
+  Object.keys(UPGRADES).forEach(k=>{
+    const u=UPGRADES[k], lvl=up(k), maxed=lvl>=u.max, c=cost(k);
+    const div=document.createElement('div'); div.className='item';
+    div.innerHTML=`<div class="info"><b>${u.name} — ур. ${lvl}/${u.max}</b><span>${u.desc}</span></div>
+      <button class="buy" ${maxed||(sv.coins||0)<c?'disabled':''}>${maxed?'MAX':c+' 🪙'}</button>`;
+    div.querySelector('.buy').onclick = async () => {
+      if((sv.coins||0)>=c && up(k)<u.max){
+        sv.coins-=c; local.up[k]=(local.up[k]||0)+1;
+        try { await api.post('/api/save', { coins: -c, up: local.up, best: sv.best||0, ref: null }); } catch(e){}
+        localStorage.setItem('sm_v2', JSON.stringify(local));
+        renderShop(); renderMenu();
+      }
+    };
+    $('items').appendChild(div);
+  });
+}
+function renderLb(){
+  $('lbItems').innerHTML='';
+  const lb = sv.lb && sv.lb.length ? sv.lb : [{uid:'—',best:0}];
+  lb.forEach((u,i)=>{
+    const div=document.createElement('div'); div.className='item';
+    div.innerHTML=`<div class="rank">#${i+1}</div><div class="info"><b>${u.uid==String(uid)?'Это ты 🫵':'Игрок '+String(u.uid).slice(-4)}</b></div>
+      <b style="color:#ffd76e">${u.best}</b>`;
+    $('lbItems').appendChild(div);
+  });
+}
+
+// ---------- Виральные механики ----------
+$('inviteBtn').onclick = () => {
+  const link = location.origin + '/?ref=' + uid;
+  const text = 'Залетай в Star Miner 🚀 Побей мой рекорд и получи +200 монет по моей ссылке!';
+  if (tg && tg.shareURL) { tg.shareURL(link, text); }
+  else { navigator.clipboard && navigator.clipboard.writeText(link + '\n' + text); toast('Ссылка скопирована — отправь другу'); }
+};
+$('taskGoBtn').onclick = () => window.open('https://t.me/', '_blank'); // TODO: вставь канал для спонсорских заданий
+$('taskCheckBtn').onclick = async () => {
+  try {
+    const r = await api.post('/api/task', {});
+    if(r.ok){ sv=r.state; toast('+150 🪙 за ежедневное задание'); }
+    else toast('Задание уже выполнено сегодня');
+  } catch(e){ toast('Нет связи с сервером'); }
+  renderMenu();
+};
+
+function toast(msg){
+  const el=document.createElement('div'); el.className='toast'; el.textContent=msg;
+  document.getElementById('wrap').appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.remove(),400); }, 2600);
+}
+
+$('playBtn').onclick=startRun;
+$('againBtn').onclick=startRun;
+$('shopBtn').onclick=()=>{ renderShop(); show('shop'); };
+$('overMenuBtn').onclick=()=>show('menu');
+$('lbBtn').onclick=()=>{ renderLb(); show('lb'); };
+$('lbBackBtn').onclick=()=>show('menu');
+$('backBtn').onclick=()=>show('menu');
+
+loadState();
+show('menu');
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
